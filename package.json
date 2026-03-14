@@ -1,23 +1,16 @@
 {
   "name": "serverp3d-gateway",
   "version": "1.0.0",
-  "description": "WhatsApp Gateway ServerP3D RT 04",
-  "main": "whatsapp.js",
   "type": "module",
+  "main": "whatsapp.js",
   "scripts": {
-    "start": "node whatsapp.js",
-    "install": "npm install --legacy-peer-deps"
+    "start": "node whatsapp.js"
   },
   "dependencies": {
-    "baileys": "latest",
+    "baileys": "^6.6.0",
     "@hapi/boom": "^9.1.4",
     "pino": "^7.0.5",
     "express": "^4.17.1",
-    "socket.io": "^4.0.0",
-    "axios": "^0.21.1",
-    "qrcode-terminal": "^0.12.0",
-    "fs": "latest",
-    "jimp": "latest",
-    "libsignal": "latest"
+    "jimp": "^0.16.1"
   }
 }
