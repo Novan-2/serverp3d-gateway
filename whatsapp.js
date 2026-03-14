@@ -1,12 +1,11 @@
-import pkg from 'baileys';
+import baileys from '@whiskeysockets/baileys'; // Pastikan menggunakan library yang benar
 const { 
     default: makeWASocket, 
     useMultiFileAuthState, 
     DisconnectReason, 
-    fetchLatestBaileysVersion 
-} = pkg;
-
-const makeInMemoryStore = pkg.makeInMemoryStore || pkg.default?.makeInMemoryStore;
+    fetchLatestBaileysVersion,
+    makeInMemoryStore 
+} = baileys;
 
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
@@ -25,7 +24,7 @@ app.use(cors());
 app.use(bodyParser.json());
 
 const logger = pino({ level: 'silent' });
-const store = makeInMemoryStore ? makeInMemoryStore({ logger }) : null;
+const store = makeInMemoryStore({ logger });
 
 let latestQR = null;
 let sock = null;
@@ -37,8 +36,8 @@ async function startServerP3D() {
     sock = makeWASocket({
         version,
         logger,
-        printQRInTerminal: true,
         auth: state,
+        printQRInTerminal: true,
         browser: ['ServerP3D Gateway', 'Chrome', '1.0.0'],
         connectTimeoutMs: 60000,
     });
@@ -62,7 +61,6 @@ async function startServerP3D() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Endpoint Status (Sangat penting untuk dashboard web)
     app.get('/status', (req, res) => {
         res.json({
             status: sock?.user ? 'connected' : 'disconnected',
@@ -74,8 +72,7 @@ async function startServerP3D() {
     app.get('/', (req, res) => res.send('ServerP3D Gateway Active'));
 }
 
-// Jalankan server Express di 0.0.0.0 agar terdeteksi Railway
 app.listen(port, '0.0.0.0', () => {
-    console.log(`Server running on port ${port}`);
-    startServerP3D().catch(err => console.error(err));
+    console.log(`Web Server running on port ${port}`);
+    startServerP3D().catch(err => console.error("Error:", err));
 });
