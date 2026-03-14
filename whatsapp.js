@@ -6,7 +6,7 @@ const {
     fetchLatestBaileysVersion,
 } = pkg;
 
-// Mengambil makeInMemoryStore dengan aman untuk ESM
+// Mengambil makeInMemoryStore secara aman untuk lingkungan ESM
 const makeInMemoryStore = pkg.makeInMemoryStore || pkg.default?.makeInMemoryStore;
 
 import { Boom } from '@hapi/boom';
@@ -20,6 +20,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
+// Railway menggunakan port 3000 secara default
 const port = process.env.PORT || 3000;
 
 app.use(cors());
@@ -31,8 +32,7 @@ const store = typeof makeInMemoryStore === 'function' ? makeInMemoryStore({ logg
 let latestQR = null;
 let sock = null;
 
-// --- ROUTE STATUS (HARUS DI ATAS) ---
-// Ini untuk memastikan dashboard serverp3d.xyz tidak muter terus
+// --- ROUTE STATUS (WAJIB DI ATAS AGAR TIDAK CANNOT GET) ---
 app.get('/status', (req, res) => {
     res.json({
         status: sock?.user ? 'connected' : 'disconnected',
@@ -41,10 +41,9 @@ app.get('/status', (req, res) => {
     });
 });
 
-app.get('/', (req, res) => res.send('ServerP3D Gateway Aktif & Online'));
+app.get('/', (req, res) => res.send('ServerP3D Gateway Online'));
 
 async function startServerP3D() {
-    // Session disimpan di folder auth_info_serverp3d
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_serverp3d');
     const { version } = await fetchLatestBaileysVersion();
 
@@ -53,7 +52,6 @@ async function startServerP3D() {
         logger,
         auth: state,
         printQRInTerminal: true,
-        // Nama browser agar terlihat profesional di perangkat tertaut
         browser: ['ServerP3D Gateway', 'Chrome', '1.0.0'],
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 0,
@@ -66,13 +64,11 @@ async function startServerP3D() {
         
         if (qr) {
             latestQR = qr;
-            // Munculkan QR di log Railway agar bisa di-scan manual jika web error
             qrcodeTerminal.generate(qr, { small: true });
         }
 
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('Koneksi terputus. Reconnecting:', shouldReconnect);
             if (shouldReconnect) startServerP3D();
         } else if (connection === 'open') {
             latestQR = null;
@@ -83,8 +79,8 @@ async function startServerP3D() {
     sock.ev.on('creds.update', saveCreds);
 }
 
-// Jalankan server di 0.0.0.0 agar Railway bisa melakukan mapping port
+// Binding ke 0.0.0.0 sangat penting untuk Railway
 app.listen(port, '0.0.0.0', () => {
     console.log(`Web Server running on port ${port}`);
-    startServerP3D().catch(err => console.error("Critical Error:", err));
+    startServerP3D().catch(err => console.error("Error:", err));
 });
