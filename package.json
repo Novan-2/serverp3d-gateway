@@ -18,6 +18,7 @@
     "libsignal": "latest",
     "socket.io": "latest",
     "webp-wasm": "latest",
-    "wa-sticker-formatter": "latest"
+    "node-cache": "latest",
+    "link-preview-js": "latest"
   }
 }
