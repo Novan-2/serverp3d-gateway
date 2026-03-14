@@ -7,10 +7,9 @@
     "start": "node whatsapp.js"
   },
   "dependencies": {
-    "baileys": "^6.6.0",
-    "@hapi/boom": "^9.1.4",
-    "pino": "^7.0.5",
-    "express": "^4.17.1",
-    "jimp": "^0.16.1"
+    "baileys": "latest",
+    "@hapi/boom": "latest",
+    "pino": "latest",
+    "express": "latest"
   }
 }
