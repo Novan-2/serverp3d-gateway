@@ -1,11 +1,13 @@
-import baileys from '@whiskeysockets/baileys'; // Pastikan menggunakan library yang benar
+import pkg from '@whiskeysockets/baileys';
 const { 
     default: makeWASocket, 
     useMultiFileAuthState, 
     DisconnectReason, 
     fetchLatestBaileysVersion,
-    makeInMemoryStore 
-} = baileys;
+} = pkg;
+
+// Fix khusus untuk mendapatkan makeInMemoryStore di lingkungan ESM Railway
+const makeInMemoryStore = pkg.makeInMemoryStore || pkg.default?.makeInMemoryStore;
 
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
@@ -24,7 +26,9 @@ app.use(cors());
 app.use(bodyParser.json());
 
 const logger = pino({ level: 'silent' });
-const store = makeInMemoryStore({ logger });
+
+// Inisialisasi store dengan pengecekan fungsi
+const store = typeof makeInMemoryStore === 'function' ? makeInMemoryStore({ logger }) : null;
 
 let latestQR = null;
 let sock = null;
@@ -40,16 +44,20 @@ async function startServerP3D() {
         printQRInTerminal: true,
         browser: ['ServerP3D Gateway', 'Chrome', '1.0.0'],
         connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 0,
+        keepAliveIntervalMs: 10000,
     });
 
-    if (store) store.bind(sock.ev);
+    if (store && sock.ev) store.bind(sock.ev);
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
+        
         if (qr) {
             latestQR = qr;
             qrcodeTerminal.generate(qr, { small: true });
         }
+
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) startServerP3D();
@@ -69,10 +77,10 @@ async function startServerP3D() {
         });
     });
 
-    app.get('/', (req, res) => res.send('ServerP3D Gateway Active'));
+    app.get('/', (req, res) => res.send('ServerP3D Gateway Active & Online'));
 }
 
 app.listen(port, '0.0.0.0', () => {
     console.log(`Web Server running on port ${port}`);
-    startServerP3D().catch(err => console.error("Error:", err));
+    startServerP3D().catch(err => console.error("Critical Error:", err));
 });
