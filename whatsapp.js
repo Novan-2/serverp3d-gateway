@@ -6,6 +6,7 @@ const {
     fetchLatestBaileysVersion,
 } = pkg;
 
+// Mengambil makeInMemoryStore dengan aman untuk ESM
 const makeInMemoryStore = pkg.makeInMemoryStore || pkg.default?.makeInMemoryStore;
 
 import { Boom } from '@hapi/boom';
@@ -30,7 +31,8 @@ const store = typeof makeInMemoryStore === 'function' ? makeInMemoryStore({ logg
 let latestQR = null;
 let sock = null;
 
-// --- PINDAHKAN ENDPOINT KE ATAS AGAR TERBACA ---
+// --- ROUTE STATUS (HARUS DI ATAS) ---
+// Ini untuk memastikan dashboard serverp3d.xyz tidak muter terus
 app.get('/status', (req, res) => {
     res.json({
         status: sock?.user ? 'connected' : 'disconnected',
@@ -39,9 +41,10 @@ app.get('/status', (req, res) => {
     });
 });
 
-app.get('/', (req, res) => res.send('ServerP3D Gateway Aktif'));
+app.get('/', (req, res) => res.send('ServerP3D Gateway Aktif & Online'));
 
 async function startServerP3D() {
+    // Session disimpan di folder auth_info_serverp3d
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_serverp3d');
     const { version } = await fetchLatestBaileysVersion();
 
@@ -50,28 +53,38 @@ async function startServerP3D() {
         logger,
         auth: state,
         printQRInTerminal: true,
+        // Nama browser agar terlihat profesional di perangkat tertaut
         browser: ['ServerP3D Gateway', 'Chrome', '1.0.0'],
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 0,
     });
 
     if (store && sock.ev) store.bind(sock.ev);
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
-        if (qr) latestQR = qr;
+        
+        if (qr) {
+            latestQR = qr;
+            // Munculkan QR di log Railway agar bisa di-scan manual jika web error
+            qrcodeTerminal.generate(qr, { small: true });
+        }
+
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log('Koneksi terputus. Reconnecting:', shouldReconnect);
             if (shouldReconnect) startServerP3D();
         } else if (connection === 'open') {
             latestQR = null;
-            console.log('TERHUBUNG!');
+            console.log('ServerP3D Gateway: TERHUBUNG!');
         }
     });
 
     sock.ev.on('creds.update', saveCreds);
 }
 
-// Jalankan server
+// Jalankan server di 0.0.0.0 agar Railway bisa melakukan mapping port
 app.listen(port, '0.0.0.0', () => {
-    console.log(`Server jalan di port ${port}`);
-    startServerP3D().catch(err => console.error(err));
+    console.log(`Web Server running on port ${port}`);
+    startServerP3D().catch(err => console.error("Critical Error:", err));
 });
