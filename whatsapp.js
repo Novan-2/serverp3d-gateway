@@ -6,7 +6,7 @@ const {
     fetchLatestBaileysVersion 
 } = pkg;
 
-// Fix khusus untuk mendapatkan fungsi store di environment ESM
+// Fix integrasi store untuk environment ESM
 const makeInMemoryStore = pkg.makeInMemoryStore || pkg.default?.makeInMemoryStore;
 
 import { Boom } from '@hapi/boom';
@@ -20,7 +20,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
-// Railway butuh port dinamis, default ke 3000 jika lokal
+// Mengambil PORT dari Railway Environment
 const port = process.env.PORT || 3000;
 
 app.use(cors());
@@ -29,13 +29,15 @@ app.use(bodyParser.json());
 const logger = pino({ level: 'silent' });
 const store = makeInMemoryStore ? makeInMemoryStore({ logger }) : null;
 
+// Variabel penampung status
 let latestQR = null;
+let sock = null;
 
 async function startServerP3D() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_serverp3d');
     const { version } = await fetchLatestBaileysVersion();
 
-    const sock = makeWASocket({
+    sock = makeWASocket({
         version,
         logger,
         printQRInTerminal: true,
@@ -48,6 +50,7 @@ async function startServerP3D() {
 
     if (store) store.bind(sock.ev);
 
+    // Monitoring Koneksi
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
         
@@ -69,26 +72,16 @@ async function startServerP3D() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on('messages.upsert', async m => {
-        const msg = m.messages[0];
-        if (!msg.message || msg.key.fromMe) return;
-
-        const remoteJid = msg.key.remoteJid;
-        const pesanText = msg.message.conversation || msg.message.extendedTextMessage?.text;
-
-        if (pesanText?.toLowerCase() === 'ping') {
-            await sock.sendMessage(remoteJid, { text: 'Pong! ServerP3D siap melayani.' });
-        }
-    });
-
+    // Endpoint API untuk pengecekan status
     app.get('/status', (req, res) => {
         res.json({
-            status: sock.user ? 'connected' : 'disconnected',
+            status: sock?.user ? 'connected' : 'disconnected',
             qr: latestQR,
-            device: sock.user || null
+            device: sock?.user || null
         });
     });
 
+    // Endpoint untuk kirim pesan dari Laravel
     app.post('/send-message', async (req, res) => {
         const { number, message } = req.body;
         if (!number || !message) {
@@ -105,10 +98,10 @@ async function startServerP3D() {
 
     app.get('/', (req, res) => res.send('ServerP3D Gateway Active & Online'));
 
-    // PENTING: Harus ada '0.0.0.0' agar bisa diakses di Railway
-    app.listen(port, '0.0.0.0', () => {
-        console.log(`Server running on port ${port}`);
-    });
 }
 
-startServerP3D().catch(err => console.error("Critical Error:", err));
+// Menjalankan Express Server di IP 0.0.0.0 (Wajib untuk Railway)
+app.listen(port, '0.0.0.0', () => {
+    console.log(`Web Server running on port ${port}`);
+    startServerP3D().catch(err => console.error("Critical Error:", err));
+});
