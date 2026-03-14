@@ -1,4 +1,3 @@
-import pkg from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import express from 'express';
@@ -7,24 +6,10 @@ import http from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs/promises';
 
-// ✅ FIX IMPORT ESM untuk Node 22
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// ✅ IMPORT LENGKAP & AMAN - Work di semua versi Baileys
-const {
-    default: makeWASocket,
-    useMultiFileAuthState,
-    DisconnectReason,
-    fetchLatestBaileysVersion,
-    Browsers
-} = pkg;
-
-// Fallback jika import gagal (untuk versi lama)
-const safeUseMultiFileAuthState = useMultiFileAuthState || (() => {
-    throw new Error('useMultiFileAuthState not available. Install @whiskeysockets/baileys@latest');
-});
 
 const app = express();
 const server = http.createServer(app);
@@ -32,11 +17,7 @@ const port = process.env.PORT || 3100;
 
 const io = new Server(server, {
     path: '/socket.io/',
-    cors: { 
-        origin: "*", 
-        methods: ["GET", "POST"],
-        credentials: true 
-    }
+    cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
 app.use(cors());
@@ -47,27 +28,70 @@ const logger = pino({ level: 'silent' });
 let latestQR = null;
 let sock = null;
 
+// ✅ DYNAMIC IMPORT - Work di SEMUA versi Baileys
+let baileys;
+async function loadBaileys() {
+    if (!baileys) {
+        try {
+            baileys = await import('@whiskeysockets/baileys');
+            console.log("✅ Baileys loaded:", baileys.default?.version || 'unknown');
+        } catch (error) {
+            console.error("❌ Baileys import failed:", error.message);
+            throw error;
+        }
+    }
+    return baileys;
+}
+
 async function connectToWhatsApp() {
     try {
-        console.log("🔄 Menghubungkan ke WhatsApp...");
+        console.log("🔄 Loading Baileys...");
+        const baileys = await loadBaileys();
         
-        // Pastikan folder auth ada
+        // ✅ UNIVERSAL COMPATIBILITY - Work semua versi
+        let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers;
+        
+        if (baileys.default) {
+            // ESM Default Export (v6+)
+            const pkg = baileys.default;
+            makeWASocket = pkg.default || pkg.makeWASocket || pkg;
+            useMultiFileAuthState = pkg.useMultiFileAuthState;
+            DisconnectReason = pkg.DisconnectReason;
+            fetchLatestBaileysVersion = pkg.fetchLatestBaileysVersion;
+            Browsers = pkg.Browsers;
+        } else {
+            // Named Exports (versi lama)
+            makeWASocket = baileys.makeWASocket || baileys.default;
+            useMultiFileAuthState = baileys.useMultiFileAuthState;
+            DisconnectReason = baileys.DisconnectReason;
+            fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
+            Browsers = baileys.Browsers;
+        }
+
+        // ✅ FINAL CHECK
+        if (typeof useMultiFileAuthState !== 'function') {
+            throw new Error(`useMultiFileAuthState not function. Available: ${Object.keys(baileys.default || baileys)}`);
+        }
+
+        console.log("✅ All functions loaded!");
+        
         const authPath = path.join(__dirname, 'auth_info_serverp3d');
         console.log("📁 Auth path:", authPath);
 
-        const { state, saveCreds } = await safeUseMultiFileAuthState(authPath);
-        const { version } = await fetchLatestBaileysVersion();
+        const { state, saveCreds } = await useMultiFileAuthState(authPath);
+        
+        let version = [2, 3004, 9]; // Default version
+        try {
+            const latest = await fetchLatestBaileysVersion();
+            version = latest.version;
+        } catch {}
 
         sock = makeWASocket({
             version,
             logger,
             auth: state,
             printQRInTerminal: process.env.NODE_ENV !== 'production',
-            browser: Browsers.whatsappWeb(),
-            generateHighQualityLinkPreview: true,
-            markOnlineOnConnect: true,
-            syncFullHistory: false,
-            shouldIgnoreJid: jid => jid === 'status@broadcast'
+            browser: Browsers ? Browsers.whatsappWeb() : ['ServerP3D', 'Chrome', '1.0.0']
         });
 
         sock.ev.on('creds.update', saveCreds);
@@ -78,95 +102,37 @@ async function connectToWhatsApp() {
             if (qr) {
                 latestQR = qr;
                 io.emit('qr', { qr });
-                console.log("📱 QR Code generated!");
+                console.log("📱 QR Code ready!");
             }
             
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
-                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+                const shouldReconnect = statusCode !== DisconnectReason?.loggedOut;
                 
-                console.log('🔌 Connection closed:', statusCode, DisconnectReason[statusCode] || statusCode);
+                console.log('🔌 Disconnected:', statusCode);
                 
                 if (shouldReconnect) {
-                    setTimeout(() => connectToWhatsApp(), 5000);
-                } else {
-                    console.log('❌ Logged out. Please scan QR again.');
-                    io.emit('logged-out');
+                    setTimeout(connectToWhatsApp, 3000);
                 }
             } 
             else if (connection === 'open') {
                 latestQR = null;
-                io.emit('connection-open', { 
-                    user: user?.name || user?.verifiedName || 'Unknown',
-                    id: user?.id 
-                });
-                console.log('✅ WhatsApp Connected!');
-                console.log('👤 User:', user?.name || user?.verifiedName);
-            }
-        });
-
-        // Handle messages
-        sock.ev.on('messages.upsert', ({ messages }) => {
-            const msg = messages[0];
-            if (!msg.key.fromMe && msg.message) {
-                io.emit('message', {
-                    key: msg.key,
-                    message: msg.message,
-                    pushName: msg.pushName
-                });
+                io.emit('open', { user: user?.name || 'Connected' });
+                console.log('✅ WhatsApp CONNECTED!');
             }
         });
 
     } catch (error) {
-        console.error("❌ Gagal connect WhatsApp:", error.message);
-        console.error("💡 Install: npm i @whiskeysockets/baileys@latest");
-        setTimeout(() => connectToWhatsApp(), 10000);
+        console.error("💥 Connect failed:", error.message);
+        setTimeout(connectToWhatsApp, 5000);
     }
 }
 
-// API Endpoints
-app.get('/health', (req, res) => {
-    res.json({ 
-        status: 'OK', 
-        connected: !!sock,
-        qr: !!latestQR 
-    });
-});
-
-app.get('/status', (req, res) => {
-    res.json({ 
-        connected: !!sock && sock.user,
-        user: sock?.user 
-    });
-});
-
-app.post('/send-message', async (req, res) => {
-    try {
-        if (!sock) return res.status(400).json({ error: 'Not connected' });
-        
-        const { number, message } = req.body;
-        const jid = number + '@s.whatsapp.net';
-        
-        await sock.sendMessage(jid, { text: message });
-        res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
+// Routes
+app.get('/health', (req, res) => res.json({ status: 'OK', connected: !!sock }));
+app.get('/status', (req, res) => res.json({ connected: !!sock }));
 
 server.listen(port, '0.0.0.0', () => {
-    console.log(`🌐 Web Server running on port ${port}`);
-    console.log(`🔗 Socket.IO ready on /socket.io/`);
-    
-    // Mulai koneksi WhatsApp
+    console.log(`🌐 Server on port ${port}`);
     connectToWhatsApp();
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    console.log('🛑 Shutting down gracefully...');
-    sock?.end();
-    server.close(() => {
-        process.exit(0);
-    });
 });
