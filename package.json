@@ -2,15 +2,16 @@
   "name": "serverp3d-gateway",
   "version": "1.0.0",
   "type": "module",
-  "main": "whatsapp.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node whatsapp.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "latest",
     "@hapi/boom": "latest",
     "pino": "latest",
     "express": "latest",
+    "socket.io": "latest",
     "qrcode-terminal": "latest",
     "cors": "latest",
     "body-parser": "latest",
