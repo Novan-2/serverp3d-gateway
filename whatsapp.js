@@ -1,11 +1,14 @@
 import pkg from '@whiskeysockets/baileys';
+const baileys = pkg.default || pkg; // Ini kunci utamanya
+
+// Ekstraksi fungsi dengan pengecekan aman
+const makeWASocket = baileys.makeWASocket || baileys.default;
 const { 
-    default: makeWASocket, 
     useMultiFileAuthState, 
     DisconnectReason, 
     fetchLatestBaileysVersion,
     makeInMemoryStore 
-} = pkg;
+} = baileys;
 
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
@@ -21,7 +24,6 @@ const app = express();
 const server = http.createServer(app);
 const port = process.env.PORT || 3000;
 
-// Konfigurasi Socket.io agar konek ke Laravel
 const io = new Server(server, {
     path: '/socket.io/',
     cors: { origin: "*", methods: ["GET", "POST"] }
@@ -31,7 +33,11 @@ app.use(cors());
 app.use(express.json());
 
 const logger = pino({ level: 'silent' });
-const store = makeInMemoryStore({ logger });
+
+// Pengecekan ekstra agar tidak crash di baris 34 lagi
+const store = (typeof makeInMemoryStore === 'function') 
+    ? makeInMemoryStore({ logger }) 
+    : null;
 
 let latestQR = null;
 let sock = null;
@@ -47,6 +53,12 @@ app.get('/status', (req, res) => {
 app.get('/', (req, res) => res.send('ServerP3D Gateway Active'));
 
 async function connectToWhatsApp() {
+    // Pastikan fungsi tersedia sebelum dijalankan
+    if (typeof useMultiFileAuthState !== 'function') {
+        console.error("Fatal Error: useMultiFileAuthState bukan fungsi!");
+        return;
+    }
+
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_serverp3d');
     const { version } = await fetchLatestBaileysVersion();
 
@@ -58,7 +70,7 @@ async function connectToWhatsApp() {
         browser: ['ServerP3D', 'Chrome', '1.0.0'],
     });
 
-    store.bind(sock.ev);
+    if (store) store.bind(sock.ev);
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
@@ -66,7 +78,7 @@ async function connectToWhatsApp() {
         if (qr) {
             latestQR = qr;
             io.emit('qr', { qr });
-            console.log("QR Code diperbarui, silakan scan.");
+            console.log("QR Code Ready.");
         }
 
         if (connection === 'close') {
@@ -82,8 +94,7 @@ async function connectToWhatsApp() {
     sock.ev.on('creds.update', saveCreds);
 }
 
-// Jalankan Server
 server.listen(port, '0.0.0.0', () => {
     console.log(`Web Server running on port ${port}`);
-    connectToWhatsApp().catch(err => console.error("Error:", err));
+    connectToWhatsApp().catch(err => console.error("Error utama:", err));
 });
