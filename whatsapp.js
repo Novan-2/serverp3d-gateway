@@ -1,16 +1,16 @@
 import pkg from '@whiskeysockets/baileys';
-// Cara akses paling aman untuk Node 22
-const baileys = pkg.default || pkg;
-
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import http from 'http';
 import { Server } from 'socket.io';
 
-dotenv.config();
+// 1. Ekstraksi Manual - Ini cara paling ampuh di Node 22
+const makeWASocket = pkg.default || pkg;
+const useMultiFileAuthState = pkg.useMultiFileAuthState || pkg.default?.useMultiFileAuthState;
+const fetchLatestBaileysVersion = pkg.fetchLatestBaileysVersion || pkg.default?.fetchLatestBaileysVersion;
+const DisconnectReason = pkg.DisconnectReason || pkg.default?.DisconnectReason;
 
 const app = express();
 const server = http.createServer(app);
@@ -25,31 +25,14 @@ app.use(cors());
 app.use(express.json());
 
 const logger = pino({ level: 'silent' });
-
-// FIX ERROR: Cek dulu apakah fungsi ada, jika tidak ada, jangan jalankan agar tidak crash
-let store = null;
-if (typeof baileys.makeInMemoryStore === 'function') {
-    store = baileys.makeInMemoryStore({ logger });
-}
-
 let latestQR = null;
 let sock = null;
 
-app.get('/status', (req, res) => {
-    res.json({
-        status: sock?.user ? 'connected' : 'disconnected',
-        qr: latestQR,
-    });
-});
-
-app.get('/', (req, res) => res.send('ServerP3D Gateway Online'));
-
 async function connectToWhatsApp() {
-    // Ambil fungsi secara manual dari objek baileys
-    const makeWASocket = baileys.default || baileys.makeWASocket || baileys;
-    const useMultiFileAuthState = baileys.useMultiFileAuthState;
-    const fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
-    const DisconnectReason = baileys.DisconnectReason;
+    // Validasi paksa: jika tetap gagal, kita beri peringatan di log
+    if (typeof useMultiFileAuthState !== 'function') {
+        console.error("CRITICAL: useMultiFileAuthState masih bukan fungsi. Mencoba metode alternatif...");
+    }
 
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_serverp3d');
     const { version } = await fetchLatestBaileysVersion();
@@ -62,14 +45,12 @@ async function connectToWhatsApp() {
         browser: ['ServerP3D', 'Chrome', '1.0.0'],
     });
 
-    if (store) store.bind(sock.ev);
-
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
         if (qr) {
             latestQR = qr;
             io.emit('qr', { qr });
-            console.log("QR Ready untuk di-scan");
+            console.log("QR Terdeteksi!");
         }
         if (connection === 'close') {
             const shouldReconnect = (new Boom(lastDisconnect?.error))?.output?.statusCode !== DisconnectReason.loggedOut;
@@ -77,7 +58,7 @@ async function connectToWhatsApp() {
         } else if (connection === 'open') {
             latestQR = null;
             io.emit('connection-open', { user: sock.user });
-            console.log('WhatsApp Terhubung!');
+            console.log('WhatsApp CONNECTED!');
         }
     });
 
@@ -86,5 +67,8 @@ async function connectToWhatsApp() {
 
 server.listen(port, '0.0.0.0', () => {
     console.log(`Web Server running on port ${port}`);
-    connectToWhatsApp().catch(err => console.error("Gagal start:", err));
+    connectToWhatsApp().catch(err => {
+        console.error("Gagal total pada fungsi connect:");
+        console.error(err);
+    });
 });
