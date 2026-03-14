@@ -22,6 +22,8 @@
     "link-preview-js": "latest",
     "ulid": "latest",
     "form-data": "latest",
-    "fluent-ffmpeg": "latest"
+    "fluent-ffmpeg": "latest",
+    "mysql2": "latest",
+    "knex": "latest"
   }
 }
