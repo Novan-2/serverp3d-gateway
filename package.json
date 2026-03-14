@@ -27,6 +27,9 @@
     "knex": "latest",
     "dotenv": "latest",
     "cors": "latest",
-    "body-parser": "latest"
+    "body-parser": "latest",
+    "@google/generative-ai": "latest",
+    "openai": "latest",
+    "@anthropic-ai/sdk": "latest"
   }
 }
