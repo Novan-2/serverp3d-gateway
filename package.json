@@ -4,7 +4,8 @@
   "type": "module",
   "main": "whatsapp.js",
   "scripts": {
-    "start": "node whatsapp.js"
+    "start": "node whatsapp.js",
+    "railway-build": "npm install @google/generative-ai && npm install @google/genai@npm:@google/generative-ai"
   },
   "dependencies": {
     "baileys": "latest",
@@ -28,8 +29,7 @@
     "dotenv": "latest",
     "cors": "latest",
     "body-parser": "latest",
-    "@google/genai": "npm:@google/generative-ai@latest",
-    "openai": "latest",
-    "@anthropic-ai/sdk": "latest"
+    "@google/generative-ai": "latest",
+    "@google/genai": "npm:@google/generative-ai@latest"
   }
 }
