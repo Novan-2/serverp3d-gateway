@@ -16,6 +16,8 @@
     "qrcode-terminal": "latest",
     "jimp": "latest",
     "libsignal": "latest",
-    "socket.io": "latest"
+    "socket.io": "latest",
+    "webp-wasm": "latest",
+    "wa-sticker-formatter": "latest"
   }
 }
