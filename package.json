@@ -1,0 +1,16 @@
+{
+  "name": "serverp3d-gateway",
+  "version": "1.0.0",
+  "description": "WhatsApp Gateway ServerP3D",
+  "main": "whatsapp.js",
+  "scripts": {
+    "start": "node whatsapp.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "socket.io": "^4.0.0",
+    "whatsapp-web.js": "latest",
+    "qrcode-terminal": "^0.12.0",
+    "axios": "^0.21.1"
+  }
+}
