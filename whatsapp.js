@@ -6,7 +6,6 @@ const {
     fetchLatestBaileysVersion,
 } = pkg;
 
-// Fix khusus untuk mendapatkan makeInMemoryStore di lingkungan ESM Railway
 const makeInMemoryStore = pkg.makeInMemoryStore || pkg.default?.makeInMemoryStore;
 
 import { Boom } from '@hapi/boom';
@@ -26,12 +25,21 @@ app.use(cors());
 app.use(bodyParser.json());
 
 const logger = pino({ level: 'silent' });
-
-// Inisialisasi store dengan pengecekan fungsi
 const store = typeof makeInMemoryStore === 'function' ? makeInMemoryStore({ logger }) : null;
 
 let latestQR = null;
 let sock = null;
+
+// --- PINDAHKAN ENDPOINT KE ATAS AGAR TERBACA ---
+app.get('/status', (req, res) => {
+    res.json({
+        status: sock?.user ? 'connected' : 'disconnected',
+        qr: latestQR,
+        device: sock?.user || null
+    });
+});
+
+app.get('/', (req, res) => res.send('ServerP3D Gateway Aktif'));
 
 async function startServerP3D() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_serverp3d');
@@ -43,44 +51,27 @@ async function startServerP3D() {
         auth: state,
         printQRInTerminal: true,
         browser: ['ServerP3D Gateway', 'Chrome', '1.0.0'],
-        connectTimeoutMs: 60000,
-        defaultQueryTimeoutMs: 0,
-        keepAliveIntervalMs: 10000,
     });
 
     if (store && sock.ev) store.bind(sock.ev);
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
-        
-        if (qr) {
-            latestQR = qr;
-            qrcodeTerminal.generate(qr, { small: true });
-        }
-
+        if (qr) latestQR = qr;
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) startServerP3D();
         } else if (connection === 'open') {
             latestQR = null;
-            console.log('ServerP3D Gateway: TERHUBUNG!');
+            console.log('TERHUBUNG!');
         }
     });
 
     sock.ev.on('creds.update', saveCreds);
-
-    app.get('/status', (req, res) => {
-        res.json({
-            status: sock?.user ? 'connected' : 'disconnected',
-            qr: latestQR,
-            device: sock?.user || null
-        });
-    });
-
-    app.get('/', (req, res) => res.send('ServerP3D Gateway Active & Online'));
 }
 
+// Jalankan server
 app.listen(port, '0.0.0.0', () => {
-    console.log(`Web Server running on port ${port}`);
-    startServerP3D().catch(err => console.error("Critical Error:", err));
+    console.log(`Server jalan di port ${port}`);
+    startServerP3D().catch(err => console.error(err));
 });
