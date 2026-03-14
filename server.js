@@ -1,87 +1,33 @@
-import pkg from '@whiskeysockets/baileys';
-const { 
-    default: makeWASocket, 
-    useMultiFileAuthState, 
-    DisconnectReason, 
-    fetchLatestBaileysVersion,
-    makeInMemoryStore 
-} = pkg;
-
-import { Boom } from '@hapi/boom';
-import pino from 'pino';
-import express from 'express';
-import qrcodeTerminal from 'qrcode-terminal';
-import cors from 'cors';
-import bodyParser from 'body-parser';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import * as wa from "./whatsapp.js";
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
+import cors from "cors";
 
 const app = express();
-const port = process.env.PORT || 3000;
+const server = http.createServer(app);
 
-app.use(cors({ origin: '*' }));
-app.use(bodyParser.json());
-
-const logger = pino({ level: 'silent' });
-const store = makeInMemoryStore({ logger });
-
-let latestQR = null;
-let sock = null;
-let socketIO = null;
-
-export const setSocketIO = (io) => {
-    socketIO = io;
-};
-
-app.get('/status', (req, res) => {
-    res.json({
-        status: sock?.user ? 'connected' : 'disconnected',
-        qr: latestQR,
-        device: sock?.user || null
-    });
+// Konfigurasi Socket.io agar sinkron dengan Laravel
+const io = new Server(server, {
+  path: '/socket.io/',
+  cors: {
+    origin: "*", 
+    methods: ["GET", "POST"]
+  }
 });
 
-export async function connectToWhatsApp(data = null, io = null) {
-    if (io) socketIO = io;
-    
-    // Inisialisasi Auth State
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_serverp3d');
-    const { version } = await fetchLatestBaileysVersion();
+app.use(cors());
+app.use(express.json());
 
-    sock = makeWASocket({
-        version,
-        logger,
-        auth: state,
-        printQRInTerminal: true,
-        browser: ['ServerP3D Gateway', 'Chrome', '1.0.0'],
-        connectTimeoutMs: 60000,
-    });
-
-    store.bind(sock.ev);
-
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        
-        if (qr) {
-            latestQR = qr;
-            if (socketIO) socketIO.emit('qr', { qr });
-        }
-
-        if (connection === 'close') {
-            const shouldReconnect = (new Boom(lastDisconnect?.error))?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) connectToWhatsApp();
-        } else if (connection === 'open') {
-            latestQR = null;
-            if (socketIO) socketIO.emit('connection-open', { user: sock.user });
-            console.log('WA Connected!');
-        }
-    });
-
-    sock.ev.on('creds.update', saveCreds);
+// Sambungkan Socket ke logika WhatsApp
+if (typeof wa.setSocketIO === 'function') {
+    wa.setSocketIO(io);
 }
 
-app.listen(port, '0.0.0.0', () => {
-    console.log(`Web Server running on port ${port}`);
-    connectToWhatsApp().catch(err => console.error("Error:", err));
+const port = process.env.PORT || 3000;
+
+server.listen(port, '0.0.0.0', () => {
+    console.log(`Server aktif di port: ${port}`);
+    // Jalankan inisialisasi WhatsApp
+    wa.connectToWhatsApp(null, io);
 });
