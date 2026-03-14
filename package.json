@@ -4,30 +4,16 @@
   "type": "module",
   "main": "whatsapp.js",
   "scripts": {
-    "start": "node whatsapp.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node whatsapp.js"
   },
   "dependencies": {
-    "baileys": "latest",
+    "@whiskeysockets/baileys": "latest",
     "@hapi/boom": "latest",
     "pino": "latest",
     "express": "latest",
-    "axios": "latest",
-    "qrcode": "latest",
     "qrcode-terminal": "latest",
-    "jimp": "latest",
-    "libsignal": "latest",
-    "socket.io": "latest",
-    "node-cache": "latest",
-    "link-preview-js": "latest",
-    "ulid": "latest",
-    "form-data": "latest",
-    "fluent-ffmpeg": "latest",
-    "mysql2": "latest",
-    "knex": "latest",
-    "dotenv": "latest",
     "cors": "latest",
     "body-parser": "latest",
-    "@google/generative-ai": "latest"
+    "dotenv": "latest"
   }
 }
