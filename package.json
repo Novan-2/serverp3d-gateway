@@ -24,6 +24,9 @@
     "form-data": "latest",
     "fluent-ffmpeg": "latest",
     "mysql2": "latest",
-    "knex": "latest"
+    "knex": "latest",
+    "dotenv": "latest",
+    "cors": "latest",
+    "body-parser": "latest"
   }
 }
