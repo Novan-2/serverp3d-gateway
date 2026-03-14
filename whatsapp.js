@@ -1,12 +1,6 @@
 import pkg from '@whiskeysockets/baileys';
-// Cara akses library paling aman untuk Node.js versi terbaru (v22)
-const { 
-    default: makeWASocket, 
-    useMultiFileAuthState, 
-    DisconnectReason, 
-    fetchLatestBaileysVersion,
-    makeInMemoryStore 
-} = pkg;
+// Cara akses paling aman untuk Node 22
+const baileys = pkg.default || pkg;
 
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
@@ -22,95 +16,75 @@ const app = express();
 const server = http.createServer(app);
 const port = process.env.PORT || 3100;
 
-// Konfigurasi Socket.io untuk komunikasi Real-time dengan Laravel
 const io = new Server(server, {
     path: '/socket.io/',
-    cors: { 
-        origin: "*", 
-        methods: ["GET", "POST"],
-        credentials: true
-    },
-    transports: ['websocket', 'polling']
+    cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
 app.use(cors());
 app.use(express.json());
 
 const logger = pino({ level: 'silent' });
-const store = makeInMemoryStore({ logger });
+
+// FIX ERROR: Cek dulu apakah fungsi ada, jika tidak ada, jangan jalankan agar tidak crash
+let store = null;
+if (typeof baileys.makeInMemoryStore === 'function') {
+    store = baileys.makeInMemoryStore({ logger });
+}
 
 let latestQR = null;
 let sock = null;
 
-// Route cek status di browser
 app.get('/status', (req, res) => {
     res.json({
         status: sock?.user ? 'connected' : 'disconnected',
         qr: latestQR,
-        device: sock?.user || null
     });
 });
 
-app.get('/', (req, res) => res.send('ServerP3D Gateway Active pada Port ' + port));
+app.get('/', (req, res) => res.send('ServerP3D Gateway Online'));
 
-// Fungsi Utama Koneksi WhatsApp
 async function connectToWhatsApp() {
-    try {
-        const { state, saveCreds } = await useMultiFileAuthState('auth_info_serverp3d');
-        const { version } = await fetchLatestBaileysVersion();
+    // Ambil fungsi secara manual dari objek baileys
+    const makeWASocket = baileys.default || baileys.makeWASocket || baileys;
+    const useMultiFileAuthState = baileys.useMultiFileAuthState;
+    const fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
+    const DisconnectReason = baileys.DisconnectReason;
 
-        sock = makeWASocket({
-            version,
-            logger,
-            auth: state,
-            printQRInTerminal: true,
-            browser: ['ServerP3D', 'Chrome', '1.0.0'],
-            connectTimeoutMs: 60000,
-            defaultQueryTimeoutMs: 0,
-        });
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info_serverp3d');
+    const { version } = await fetchLatestBaileysVersion();
 
-        store.bind(sock.ev);
+    sock = makeWASocket({
+        version,
+        logger,
+        auth: state,
+        printQRInTerminal: true,
+        browser: ['ServerP3D', 'Chrome', '1.0.0'],
+    });
 
-        sock.ev.on('connection.update', (update) => {
-            const { connection, lastDisconnect, qr } = update;
-            
-            if (qr) {
-                latestQR = qr;
-                // Kirim QR ke Dashboard Laravel lewat Socket.io
-                io.emit('qr', { qr });
-                console.log("QR Code diperbarui.");
-            }
+    if (store) store.bind(sock.ev);
 
-            if (connection === 'close') {
-                const shouldReconnect = (new Boom(lastDisconnect?.error))?.output?.statusCode !== DisconnectReason.loggedOut;
-                if (shouldReconnect) {
-                    console.log("Mencoba menyambung ulang...");
-                    connectToWhatsApp();
-                }
-            } else if (connection === 'open') {
-                latestQR = null;
-                io.emit('connection-open', { user: sock.user });
-                console.log('WhatsApp Terhubung!');
-            }
-        });
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        if (qr) {
+            latestQR = qr;
+            io.emit('qr', { qr });
+            console.log("QR Ready untuk di-scan");
+        }
+        if (connection === 'close') {
+            const shouldReconnect = (new Boom(lastDisconnect?.error))?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) connectToWhatsApp();
+        } else if (connection === 'open') {
+            latestQR = null;
+            io.emit('connection-open', { user: sock.user });
+            console.log('WhatsApp Terhubung!');
+        }
+    });
 
-        sock.ev.on('creds.update', saveCreds);
-
-    } catch (error) {
-        console.error("Gagal menjalankan Baileys:", error);
-    }
+    sock.ev.on('creds.update', saveCreds);
 }
 
-// Event Socket.io saat browser Laravel terhubung
-io.on('connection', (socket) => {
-    console.log('Client terhubung ke Socket:', socket.id);
-    if (latestQR) {
-        socket.emit('qr', { qr: latestQR });
-    }
-});
-
-// Jalankan Server
 server.listen(port, '0.0.0.0', () => {
     console.log(`Web Server running on port ${port}`);
-    connectToWhatsApp();
+    connectToWhatsApp().catch(err => console.error("Gagal start:", err));
 });
