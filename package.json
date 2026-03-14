@@ -1,36 +1,21 @@
 {
-  "name": "serverp3d-gateway",
-  "version": "1.0.0",
-  "type": "module",
-  "main": "whatsapp.js",
-  "scripts": {
-    "start": "node whatsapp.js",
-    "railway-build": "npm install @google/generative-ai && npm install @google/genai@npm:@google/generative-ai"
-  },
-  "dependencies": {
-    "baileys": "latest",
-    "@hapi/boom": "latest",
-    "pino": "latest",
-    "express": "latest",
-    "axios": "latest",
-    "qrcode": "latest",
-    "qrcode-terminal": "latest",
-    "jimp": "latest",
-    "libsignal": "latest",
-    "socket.io": "latest",
-    "webp-wasm": "latest",
-    "node-cache": "latest",
-    "link-preview-js": "latest",
-    "ulid": "latest",
-    "form-data": "latest",
-    "fluent-ffmpeg": "latest",
-    "mysql2": "latest",
-    "knex": "latest",
-    "dotenv": "latest",
-    "cors": "latest",
-    "body-parser": "latest",
-    "@google/generative-ai": "latest",
-    "@google/genai": "npm:@google/generative-ai@latest"
-  }
-  
+  "name": "serverp3d-gateway",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "whatsapp.js",
+  "scripts": {
+    "start": "node whatsapp.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "latest",
+    "@hapi/boom": "latest",
+    "pino": "latest",
+    "express": "latest",
+    "qrcode-terminal": "latest",
+    "cors": "latest",
+    "body-parser": "latest",
+    "dotenv": "latest",
+    "link-preview-js": "latest",
+    "qrcode": "latest"
+  }
 }
