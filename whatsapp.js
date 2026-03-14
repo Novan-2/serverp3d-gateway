@@ -2,9 +2,8 @@ import pkg from '@whiskeysockets/baileys';
 const { 
     default: makeWASocket, 
     useMultiFileAuthState, 
-    DisconnectReason, 
     fetchLatestBaileysVersion,
-    makeInMemoryStore 
+    DisconnectReason
 } = pkg;
 
 import { Boom } from '@hapi/boom';
