@@ -20,21 +20,18 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
+// Railway butuh port dinamis, default ke 3000 jika lokal
 const port = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
 app.use(bodyParser.json());
 
-// Inisialisasi Logger dan Store
 const logger = pino({ level: 'silent' });
 const store = makeInMemoryStore ? makeInMemoryStore({ logger }) : null;
 
-// Variable global untuk memantau status QR terbaru
 let latestQR = null;
 
 async function startServerP3D() {
-    // Session disimpan di folder 'auth_info_serverp3d'
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_serverp3d');
     const { version } = await fetchLatestBaileysVersion();
 
@@ -44,16 +41,13 @@ async function startServerP3D() {
         printQRInTerminal: true,
         auth: state,
         browser: ['ServerP3D Gateway', 'Chrome', '1.0.0'],
-        // Optimasi koneksi untuk server luar (Railway)
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 0,
         keepAliveIntervalMs: 10000,
-        generateHighQualityLinkPreview: true,
     });
 
     if (store) store.bind(sock.ev);
 
-    // Pemantauan Koneksi
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
         
@@ -73,10 +67,8 @@ async function startServerP3D() {
         }
     });
 
-    // Simpan data login otomatis
     sock.ev.on('creds.update', saveCreds);
 
-    // Logika Pesan Masuk
     sock.ev.on('messages.upsert', async m => {
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
@@ -84,15 +76,11 @@ async function startServerP3D() {
         const remoteJid = msg.key.remoteJid;
         const pesanText = msg.message.conversation || msg.message.extendedTextMessage?.text;
 
-        // Auto-reply sederhana agar user tahu bot aktif
         if (pesanText?.toLowerCase() === 'ping') {
             await sock.sendMessage(remoteJid, { text: 'Pong! ServerP3D siap melayani.' });
         }
     });
 
-    // --- ENDPOINT API UNTUK LARAVEL ---
-
-    // Endpoint: Cek Status Bot
     app.get('/status', (req, res) => {
         res.json({
             status: sock.user ? 'connected' : 'disconnected',
@@ -101,14 +89,11 @@ async function startServerP3D() {
         });
     });
 
-    // Endpoint: Kirim Pesan
     app.post('/send-message', async (req, res) => {
         const { number, message } = req.body;
-        
         if (!number || !message) {
             return res.status(400).json({ status: false, error: 'Nomor dan pesan tidak boleh kosong' });
         }
-
         try {
             const jid = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
             await sock.sendMessage(jid, { text: message });
@@ -118,13 +103,12 @@ async function startServerP3D() {
         }
     });
 
-    // Route Utama
     app.get('/', (req, res) => res.send('ServerP3D Gateway Active & Online'));
 
-    app.listen(port, () => {
+    // PENTING: Harus ada '0.0.0.0' agar bisa diakses di Railway
+    app.listen(port, '0.0.0.0', () => {
         console.log(`Server running on port ${port}`);
     });
 }
 
-// Jalankan bot dengan error handling
 startServerP3D().catch(err => console.error("Critical Error:", err));
