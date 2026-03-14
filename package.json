@@ -10,6 +10,12 @@
     "baileys": "latest",
     "@hapi/boom": "latest",
     "pino": "latest",
-    "express": "latest"
+    "express": "latest",
+    "axios": "latest",
+    "qrcode-terminal": "latest",
+    "jimp": "latest",
+    "libsignal": "latest",
+    "socket.io": "latest",
+    "form-data": "latest"
   }
 }
