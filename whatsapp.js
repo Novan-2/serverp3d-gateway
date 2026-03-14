@@ -1,12 +1,4 @@
 import baileys from '@whiskeysockets/baileys';
-const { 
-    default: makeWASocket, 
-    useMultiFileAuthState, 
-    DisconnectReason, 
-    fetchLatestBaileysVersion,
-    makeInMemoryStore 
-} = baileys;
-
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import express from 'express';
@@ -17,6 +9,13 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Cara akses Baileys yang paling aman untuk ES Module
+const makeWASocket = baileys.default || baileys;
+const useMultiFileAuthState = baileys.useMultiFileAuthState;
+const DisconnectReason = baileys.DisconnectReason;
+const fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
+const makeInMemoryStore = baileys.makeInMemoryStore;
+
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -24,13 +23,14 @@ app.use(cors({ origin: '*' }));
 app.use(bodyParser.json());
 
 const logger = pino({ level: 'silent' });
-const store = makeInMemoryStore({ logger });
+
+// Pastikan store tidak bikin crash kalau fungsi gagal di-load
+const store = typeof makeInMemoryStore === 'function' ? makeInMemoryStore({ logger }) : null;
 
 let latestQR = null;
 let sock = null;
 let socketIO = null;
 
-// Fungsi agar server.js bisa mengirim IO ke sini
 export const setSocketIO = (io) => {
     socketIO = io;
 };
@@ -45,7 +45,6 @@ app.get('/status', (req, res) => {
 
 app.get('/', (req, res) => res.send('ServerP3D Gateway Online'));
 
-// Fungsi utama koneksi
 export async function connectToWhatsApp(data = null, io = null) {
     if (io) socketIO = io;
     
@@ -61,7 +60,7 @@ export async function connectToWhatsApp(data = null, io = null) {
         connectTimeoutMs: 60000,
     });
 
-    store.bind(sock.ev);
+    if (store) store.bind(sock.ev);
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
@@ -69,9 +68,7 @@ export async function connectToWhatsApp(data = null, io = null) {
         if (qr) {
             latestQR = qr;
             qrcodeTerminal.generate(qr, { small: true });
-            if (socketIO) {
-                socketIO.emit('qr', { qr });
-            }
+            if (socketIO) socketIO.emit('qr', { qr });
         }
 
         if (connection === 'close') {
@@ -80,9 +77,7 @@ export async function connectToWhatsApp(data = null, io = null) {
         } else if (connection === 'open') {
             latestQR = null;
             console.log('ServerP3D Gateway: TERHUBUNG!');
-            if (socketIO) {
-                socketIO.emit('connection-open', { user: sock.user });
-            }
+            if (socketIO) socketIO.emit('connection-open', { user: sock.user });
         }
     });
 
@@ -90,7 +85,6 @@ export async function connectToWhatsApp(data = null, io = null) {
     return sock;
 }
 
-// Menjalankan server
 app.listen(port, '0.0.0.0', () => {
     console.log(`Web Server running on port ${port}`);
     connectToWhatsApp().catch(err => console.error("Error:", err));
