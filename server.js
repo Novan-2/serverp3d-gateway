@@ -1,117 +1,87 @@
-import * as wa from "./whatsapp.js"; // Mengarah langsung ke whatsapp.js di root
+import pkg from '@whiskeysockets/baileys';
+const { 
+    default: makeWASocket, 
+    useMultiFileAuthState, 
+    DisconnectReason, 
+    fetchLatestBaileysVersion,
+    makeInMemoryStore 
+} = pkg;
 
-import 'dotenv/config';
+import { Boom } from '@hapi/boom';
+import pino from 'pino';
+import express from 'express';
+import qrcodeTerminal from 'qrcode-terminal';
+import cors from 'cors';
+import bodyParser from 'body-parser';
+import dotenv from 'dotenv';
 
-import express from "express";
-
-import http from "http";
-
-import { Server } from "socket.io";
-
-import bodyParser from "body-parser";
-
-
+dotenv.config();
 
 const app = express();
-
-const server = http.createServer(app);
-
-
-
-// --- KONFIGURASI SOCKET.IO & CORS ---
-
-const io = new Server(server, {
-
-  path: '/socket.io/',
-
-  pingInterval: 25000,
-
-  pingTimeout: 10000,
-
-  cors: {
-
-    origin: "*", // Mengizinkan akses dari serverp3d.xyz
-
-    methods: ["GET", "POST"],
-
-    credentials: true
-
-  },
-
-  allowEIO3: true 
-
-});
-
-
-
-// Gunakan port dinamis dari Railway atau default 3000
-
 const port = process.env.PORT || 3000;
 
-
-
-// Middleware agar Socket.io bisa diakses di route Express jika perlu
-
-app.use((req, res, next) => {
-
-  res.set("Cache-Control", "no-store");
-
-  req.io = io;
-
-  next();
-
-});
-
-
-
-app.use(bodyParser.urlencoded({ extended: false, limit: "50mb" }));
-
+app.use(cors({ origin: '*' }));
 app.use(bodyParser.json());
 
+const logger = pino({ level: 'silent' });
+const store = makeInMemoryStore({ logger });
 
+let latestQR = null;
+let sock = null;
+let socketIO = null;
 
-// Menghubungkan Socket.io ke logika whatsapp.js
+export const setSocketIO = (io) => {
+    socketIO = io;
+};
 
-// Pastikan fungsi setSocketIO ada di dalam whatsapp.js Anda
-
-if (typeof wa.setSocketIO === 'function') {
-
-    wa.setSocketIO(io);
-
-}
-
-
-
-// --- EVENT LISTENER UNTUK FRONTEND LARAVEL ---
-
-io.on('connection', (socket) => {
-
-    console.log("User terhubung ke Socket: " + socket.id);
-
-
-
-    socket.on('StartConnection', (data) => {
-
-        wa.connectToWhatsApp(data, io);
-
+app.get('/status', (req, res) => {
+    res.json({
+        status: sock?.user ? 'connected' : 'disconnected',
+        qr: latestQR,
+        device: sock?.user || null
     });
-
-
-
-    socket.on('disconnect', () => {
-
-        console.log('User terputus:', socket.id);
-
-    });
-
 });
 
+export async function connectToWhatsApp(data = null, io = null) {
+    if (io) socketIO = io;
+    
+    // Inisialisasi Auth State
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info_serverp3d');
+    const { version } = await fetchLatestBaileysVersion();
 
+    sock = makeWASocket({
+        version,
+        logger,
+        auth: state,
+        printQRInTerminal: true,
+        browser: ['ServerP3D Gateway', 'Chrome', '1.0.0'],
+        connectTimeoutMs: 60000,
+    });
 
-// Jalankan Server
+    store.bind(sock.ev);
 
-server.listen(port, () => {
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        
+        if (qr) {
+            latestQR = qr;
+            if (socketIO) socketIO.emit('qr', { qr });
+        }
 
-    console.log(`Server MPWA aktif di port: ${port}`);
+        if (connection === 'close') {
+            const shouldReconnect = (new Boom(lastDisconnect?.error))?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) connectToWhatsApp();
+        } else if (connection === 'open') {
+            latestQR = null;
+            if (socketIO) socketIO.emit('connection-open', { user: sock.user });
+            console.log('WA Connected!');
+        }
+    });
 
+    sock.ev.on('creds.update', saveCreds);
+}
+
+app.listen(port, '0.0.0.0', () => {
+    console.log(`Web Server running on port ${port}`);
+    connectToWhatsApp().catch(err => console.error("Error:", err));
 });
