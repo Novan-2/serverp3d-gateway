@@ -1,59 +1,67 @@
-import * as wa from "./whatsapp.js"; // Mengarah langsung ke whatsapp.js di root
+import * as wa from "./whatsapp.js";
 import 'dotenv/config';
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import bodyParser from "body-parser";
+import cors from "cors";
 
 const app = express();
 const server = http.createServer(app);
 
-// --- KONFIGURASI SOCKET.IO & CORS ---
-const io = new Server(server, {
-  path: '/socket.io/',
-  pingInterval: 25000,
-  pingTimeout: 10000,
-  cors: {
-    origin: "*", // Mengizinkan akses dari serverp3d.xyz
-    methods: ["GET", "POST"],
-    credentials: true
-  },
-  allowEIO3: true 
-});
-
-// Gunakan port dinamis dari Railway atau default 3000
-const port = process.env.PORT || 3000;
-
-// Middleware agar Socket.io bisa diakses di route Express jika perlu
-app.use((req, res, next) => {
-  res.set("Cache-Control", "no-store");
-  req.io = io;
-  next();
-});
+// 1. Tambahkan middleware CORS standar Express
+app.use(cors({
+    origin: "*",
+    methods: ["GET", "POST"]
+}));
 
 app.use(bodyParser.urlencoded({ extended: false, limit: "50mb" }));
 app.use(bodyParser.json());
 
-// Menghubungkan Socket.io ke logika whatsapp.js
-// Pastikan fungsi setSocketIO ada di dalam whatsapp.js Anda
+// 2. Konfigurasi Socket.io yang lebih kompatibel dengan Proxy Cloud
+const io = new Server(server, {
+    path: '/socket.io/',
+    connectTimeout: 45000,
+    pingInterval: 10000,
+    pingTimeout: 5000,
+    allowEIO3: true, // Mendukung socket.io versi lama jika Laravel menggunakan client lama
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"],
+        credentials: true
+    },
+    transports: ['websocket', 'polling'] // Paksa websocket jika polling gagal
+});
+
+// Port dinamis Railway
+const port = process.env.PORT || 3000;
+
+// Hubungkan ke whatsapp.js
 if (typeof wa.setSocketIO === 'function') {
     wa.setSocketIO(io);
 }
 
-// --- EVENT LISTENER UNTUK FRONTEND LARAVEL ---
 io.on('connection', (socket) => {
-    console.log("User terhubung ke Socket: " + socket.id);
+    console.log("Client Connected: " + socket.id);
+
+    // Langsung panggil connectToWhatsApp jika socket terhubung
+    // Ini membantu jika trigger dari Laravel telat sampai
+    wa.connectToWhatsApp(null, io);
 
     socket.on('StartConnection', (data) => {
         wa.connectToWhatsApp(data, io);
     });
 
-    socket.on('disconnect', () => {
-        console.log('User terputus:', socket.id);
+    socket.on('disconnect', (reason) => {
+        console.log('Client Disconnected:', socket.id, "Reason:", reason);
     });
 });
 
-// Jalankan Server
-server.listen(port, () => {
+// 3. Tambahkan Route pengecekan manual
+app.get('/test-socket', (req, res) => {
+    res.send('Socket Server is Ready');
+});
+
+server.listen(port, '0.0.0.0', () => {
     console.log(`Server MPWA aktif di port: ${port}`);
 });
