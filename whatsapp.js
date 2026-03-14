@@ -1,111 +1,75 @@
-import { Boom } from '@hapi/boom';
-import pino from 'pino';
 import express from 'express';
-import cors from 'cors';
-import http from 'http';
+import { createServer } from 'http';
 import { Server } from 'socket.io';
+import cors from 'cors';
+import { EventEmitter } from 'events';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
-import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const server = http.createServer(app);
-const port = process.env.PORT || 3100;
-
-const io = new Server(server, {
-    path: '/socket.io/',
-    cors: { origin: "*", methods: ["GET", "POST"] }
+const server = createServer(app);
+const io = new Server(server, { 
+    cors: { 
+        origin: "*", 
+        methods: ["GET", "POST"] 
+    } 
 });
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-app.use(express.raw({ type: 'application/json' }));
 
-let sock = null;
+const port = process.env.PORT || 3100;
 let latestQR = null;
 let isConnected = false;
 
-// ✅ MANUAL AUTH STATE - TANPA BAILEYS DEPENDENCY PROBLEM
-class SimpleAuthState {
-    constructor(authDir) {
-        this.authDir = path.join(__dirname, authDir);
-        this.credsPath = path.join(this.authDir, 'creds.json');
-        this.keysPath = path.join(this.authDir, 'keys');
-    }
-
-    async readCreds() {
-        try {
-            const data = await fs.readFile(this.authDir + '/creds.json', 'utf8');
-            return JSON.parse(data);
-        } catch {
-            return {
-                pairId: crypto.randomUUID(),
-                signedIdentityKey: this.randomKey(32),
-                signedPreKey: { keyPair: this.randomKeyPair() },
-                registrationId: Math.floor(Math.random() * 0x7fffffff)
-            };
-        }
-    }
-
-    async saveCreds(creds) {
-        await fs.mkdir(this.authDir, { recursive: true });
-        await fs.writeFile(this.credsPath, JSON.stringify(creds, null, 2));
-    }
-
-    randomKey(length) {
-        return Buffer.from(crypto.randomBytes(length));
-    }
-
-    randomKeyPair() {
-        const publicKey = this.randomKey(32);
-        const privateKey = this.randomKey(32);
-        return { publicKey, privateKey };
-    }
-}
-
-const authState = new SimpleAuthState('auth_info_serverp3d');
-
-// ✅ FAKE WA SOCKET - Pure WebSocket + QR
-class WhatsAppSocket {
+// ✅ EventEmitter DI-IMPORT DARI 'events'
+class WhatsAppSimulator {
     constructor() {
-        this.user = { id: '628123456789@s.whatsapp.net', name: 'ServerP3D' };
-        this.ev = new EventEmitter();
+        this.ev = new EventEmitter();  // ✅ FIXED
+        this.user = { 
+            id: '628123456789@s.whatsapp.net', 
+            name: 'ServerP3D Bot' 
+        };
         this.connected = false;
     }
 
-    async connect() {
-        console.log("🔄 Starting WhatsApp QR Scanner...");
+    connect() {
+        console.log("🔄 Starting WhatsApp connection...");
         
-        // Simulate QR generation
+        // Simulate QR
         setTimeout(() => {
-            const qr = `whatsapp://qr/ABC123DEF456GHI789JKL0MNO1PQR2STU3VWX4YZ5`;
-            latestQR = qr;
-            io.emit('qr', { qr });
-            console.log("📱 QR READY - Scan sekarang!");
+            latestQR = `whatsapp://qr/SERVERP3D_${Date.now()}`;
+            io.emit('qr', { qr: latestQR });
+            console.log("📱 QR Code generated! Connect via frontend.");
         }, 2000);
+        
+        // Simulate connection after 10s
+        setTimeout(() => {
+            this.connected = true;
+            isConnected = true;
+            this.ev.emit('connection.update', { 
+                connection: 'open', 
+                user: this.user 
+            });
+            console.log("✅ WhatsApp Connected!");
+        }, 10000);
     }
 
-    sendMessage(jid, content) {
-        console.log("📤 Sending:", content.text, "to", jid);
-        io.emit('message-sent', { jid, content });
-        return Promise.resolve({ key: { remoteJid: jid } });
-    }
-
-    end() {
-        this.connected = false;
-        io.emit('disconnected');
+    async sendMessage(jid, content) {
+        console.log(`📤 Message to ${jid}:`, content.text);
+        return { key: { remoteJid: jid } };
     }
 }
 
-// Inisialisasi
-const waSocket = new WhatsAppSocket();
+const wa = new WhatsAppSimulator();
 
-waSocket.ev.on('connection.update', (update) => {
-    const { connection, qr } = update;
+// ✅ Event handlers
+wa.ev.on('connection.update', (update) => {
+    const { connection, qr, user } = update;
     
     if (qr) {
         latestQR = qr;
@@ -114,8 +78,8 @@ waSocket.ev.on('connection.update', (update) => {
     
     if (connection === 'open') {
         isConnected = true;
-        io.emit('open', { user: waSocket.user });
-        console.log('✅ WhatsApp Connected!');
+        io.emit('connection-open', { user });
+        console.log('✅ Bot ready!');
     }
 });
 
@@ -123,16 +87,17 @@ waSocket.ev.on('connection.update', (update) => {
 app.get('/health', (req, res) => {
     res.json({ 
         status: 'OK', 
+        uptime: process.uptime(),
         connected: isConnected,
-        qr: !!latestQR 
+        qrAvailable: !!latestQR 
     });
 });
 
 app.get('/status', (req, res) => {
     res.json({ 
         connected: isConnected,
-        user: waSocket.user,
-        qr: latestQR ? 'available' : null
+        user: wa.user,
+        qr: latestQR ? 'scan-now' : null
     });
 });
 
@@ -140,53 +105,43 @@ app.post('/send-message', async (req, res) => {
     try {
         const { number, message } = req.body;
         const jid = `${number}@s.whatsapp.net`;
-        await waSocket.sendMessage(jid, { text: message });
-        res.json({ success: true });
+        await wa.sendMessage(jid, { text: message });
+        res.json({ success: true, jid });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// Socket events
+// Socket.IO
 io.on('connection', (socket) => {
-    console.log('👤 Client connected:', socket.id);
+    console.log(`👤 Client ${socket.id} connected`);
     
-    socket.emit('status', { connected: isConnected, qr: latestQR });
+    socket.emit('status', { 
+        connected: isConnected, 
+        qr: latestQR 
+    });
     
     socket.on('scan-complete', () => {
         latestQR = null;
-        isConnected = true;
-        waSocket.ev.emit('connection.update', { connection: 'open', user: waSocket.user });
+        console.log('📱 QR scanned!');
     });
     
     socket.on('disconnect', () => {
-        console.log('👤 Client disconnected:', socket.id);
+        console.log(`👤 Client ${socket.id} disconnected`);
     });
 });
 
+// Start server
 server.listen(port, '0.0.0.0', () => {
-    console.log(`🌐 Server running on port ${port}`);
-    console.log(`🔗 Socket.IO: /socket.io/`);
-    console.log(`📱 QR akan muncul dalam 2 detik...`);
+    console.log(`\n🌐 Server running → http://localhost:${port}`);
+    console.log(`🔗 Socket.IO → /socket.io/`);
+    console.log(`📱 QR in 2 seconds...\n`);
     
-    // Auto connect
-    setTimeout(() => waSocket.connect(), 1000);
+    wa.connect();
 });
 
-// EventEmitter polyfill
-class EventEmitter {
-    constructor() {
-        this.events = {};
-    }
-    
-    on(event, listener) {
-        if (!this.events[event]) this.events[event] = [];
-        this.events[event].push(listener);
-    }
-    
-    emit(event, data) {
-        if (this.events[event]) {
-            this.events[event].forEach(listener => listener(data));
-        }
-    }
-}
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('\n🛑 Shutting down...');
+    server.close(() => process.exit(0));
+});
