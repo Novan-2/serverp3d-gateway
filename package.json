@@ -19,6 +19,9 @@
     "socket.io": "latest",
     "webp-wasm": "latest",
     "node-cache": "latest",
-    "link-preview-js": "latest"
+    "link-preview-js": "latest",
+    "ulid": "latest",
+    "form-data": "latest",
+    "fluent-ffmpeg": "latest"
   }
 }
