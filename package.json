@@ -12,10 +12,10 @@
     "pino": "latest",
     "express": "latest",
     "axios": "latest",
+    "qrcode": "latest",
     "qrcode-terminal": "latest",
     "jimp": "latest",
     "libsignal": "latest",
-    "socket.io": "latest",
-    "form-data": "latest"
+    "socket.io": "latest"
   }
 }
