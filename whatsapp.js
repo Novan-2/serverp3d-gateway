@@ -6,7 +6,6 @@ const {
     fetchLatestBaileysVersion,
 } = pkg;
 
-// Mengambil makeInMemoryStore secara aman untuk lingkungan ESM
 const makeInMemoryStore = pkg.makeInMemoryStore || pkg.default?.makeInMemoryStore;
 
 import { Boom } from '@hapi/boom';
@@ -20,10 +19,16 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
-// Railway menggunakan port 3000 secara default
 const port = process.env.PORT || 3000;
 
-app.use(cors());
+// --- PERBAIKAN CORS (SANGAT PENTING) ---
+// Ini mengizinkan dashboard serverp3d.xyz mengambil data dari Railway
+app.use(cors({
+    origin: '*', 
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(bodyParser.json());
 
 const logger = pino({ level: 'silent' });
@@ -32,7 +37,7 @@ const store = typeof makeInMemoryStore === 'function' ? makeInMemoryStore({ logg
 let latestQR = null;
 let sock = null;
 
-// --- ROUTE STATUS (WAJIB DI ATAS AGAR TIDAK CANNOT GET) ---
+// --- ROUTE STATUS (WAJIB DI ATAS) ---
 app.get('/status', (req, res) => {
     res.json({
         status: sock?.user ? 'connected' : 'disconnected',
@@ -79,7 +84,6 @@ async function startServerP3D() {
     sock.ev.on('creds.update', saveCreds);
 }
 
-// Binding ke 0.0.0.0 sangat penting untuk Railway
 app.listen(port, '0.0.0.0', () => {
     console.log(`Web Server running on port ${port}`);
     startServerP3D().catch(err => console.error("Error:", err));
