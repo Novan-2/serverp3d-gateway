@@ -18,14 +18,9 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3000; // Railway akan mengisi ini otomatis
+const port = process.env.PORT || 3000;
 
-app.use(cors({
-    origin: '*', 
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
+app.use(cors({ origin: '*' }));
 app.use(bodyParser.json());
 
 const logger = pino({ level: 'silent' });
@@ -33,9 +28,9 @@ const store = makeInMemoryStore({ logger });
 
 let latestQR = null;
 let sock = null;
-let socketIO = null; // Untuk mengirim data ke Laravel
+let socketIO = null;
 
-// Fungsi untuk menghubungkan ke Socket.io dari server.js
+// Fungsi agar server.js bisa mengirim IO ke sini
 export const setSocketIO = (io) => {
     socketIO = io;
 };
@@ -50,7 +45,7 @@ app.get('/status', (req, res) => {
 
 app.get('/', (req, res) => res.send('ServerP3D Gateway Online'));
 
-// Export fungsi agar bisa dipanggil oleh server.js
+// Fungsi utama koneksi
 export async function connectToWhatsApp(data = null, io = null) {
     if (io) socketIO = io;
     
@@ -74,7 +69,6 @@ export async function connectToWhatsApp(data = null, io = null) {
         if (qr) {
             latestQR = qr;
             qrcodeTerminal.generate(qr, { small: true });
-            // Kirim QR ke Dashboard Laravel melalui Socket.io
             if (socketIO) {
                 socketIO.emit('qr', { qr });
             }
@@ -96,10 +90,8 @@ export async function connectToWhatsApp(data = null, io = null) {
     return sock;
 }
 
-// Hanya jalankan app.listen jika file ini dijalankan langsung
-if (import.meta.url === `file://${process.argv[1]}`) {
-    app.listen(port, '0.0.0.0', () => {
-        console.log(`Web Server running on port ${port}`);
-        connectToWhatsApp().catch(err => console.error("Error:", err));
-    });
-}
+// Menjalankan server
+app.listen(port, '0.0.0.0', () => {
+    console.log(`Web Server running on port ${port}`);
+    connectToWhatsApp().catch(err => console.error("Error:", err));
+});
