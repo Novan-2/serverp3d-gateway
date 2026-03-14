@@ -14,8 +14,6 @@
     "qrcode-terminal": "latest",
     "cors": "latest",
     "body-parser": "latest",
-    "dotenv": "latest",
-    "link-preview-js": "latest",
-    "qrcode": "latest"
+    "dotenv": "latest"
   }
 }
